@@ -114,6 +114,21 @@ The Codex integration follows the official [Codex hooks documentation](https://d
 | `tmux-agent-status` | Render product-specific or combined status text |
 | `tmux-agent-jump` | Jump to the oldest live pane in the shared queue |
 
+## Deleted working directories
+
+The notify, resume, and cleanup scripts fall back to `/` if their inherited
+working directory has been deleted. They use `TMUX_PANE` and the state directory,
+so they do not need the project checkout. Valid working directories are retained
+so relative `TMUX_AGENT_STATE_DIR` overrides continue to work.
+
+This recovery only applies once the script starts. Codex launches command hooks
+in the session's working directory. If that path no longer exists, the launcher
+can fail with `No such file or directory (os error 2)` before executing any hook
+code; adding `cd /` to the hook command cannot fix that. Resume the session from
+an existing directory. A complete fix requires a fallback in Codex's hook
+launcher. Shells may also print a startup `getcwd` warning before the script can
+recover an inherited deleted directory.
+
 ## Development
 
 Run the self-contained test suite:

@@ -122,6 +122,73 @@ export TMUX_AGENT_STATE_DIR="$TMP/state"
 export TMUX_CLAUDE_STATE_DIR="$TMP/claude-state"
 export TMUX_CODEX_STATE_DIR="$TMP/codex-state"
 
+# Start hooks in an actually unlinked directory, not just with a stale PWD.
+# Probe their child processes so successful exit codes cannot hide cwd errors.
+python3 - "$ROOT" "$TMP" <<'PY'
+import os
+from pathlib import Path
+import shlex
+import shutil
+import subprocess
+import sys
+
+root, tmp = map(Path, sys.argv[1:])
+probes = tmp / "cwd-probes"
+probes.mkdir()
+for command in ("cat", "rm", "tmux"):
+    probe = probes / command
+    probe.write_text(
+        '#!/bin/sh\n'
+        '/bin/pwd -P >/dev/null 2>&1 || { echo "INVALID CHILD CWD" >&2; exit 1; }\n'
+        f'exec {shlex.quote(shutil.which(command))} "$@"\n'
+    )
+    probe.chmod(0o755)
+
+env = dict(os.environ, PATH=f"{probes}:{os.environ['PATH']}", TMUX_PANE="%deleted")
+for agent in ("claude", "codex"):
+    for action in ("notify", "resume", "cleanup"):
+        gone = tmp / "deleted-cwd"
+        gone.mkdir()
+        state = tmp / "state" / f"%deleted.{agent}.waiting"
+        other = tmp / "state" / f"%deleted.other.waiting"
+        if action != "notify":
+            state.touch()
+        other.touch()
+
+        def delete_cwd():
+            os.chdir(gone)
+            os.rmdir(gone)
+
+        result = subprocess.run(
+            [str(root / "bin" / f"tmux-agent-{action}"), agent],
+            input="{}", text=True, capture_output=True,
+            env=dict(env, PWD=str(gone)), preexec_fn=delete_cwd,
+        )
+        assert result.returncode == 0, result
+        assert "INVALID CHILD CWD" not in result.stderr, result.stderr
+        assert result.stdout == ("{}\n" if action == "notify" and agent == "codex" else ""), result
+        assert state.exists() == (action == "notify"), (action, state)
+        assert other.exists()
+        state.unlink(missing_ok=True)
+        other.unlink()
+
+# A stale PWD variable alone must not redirect a valid relative state path.
+relative = tmp / "relative-state"
+relative.mkdir()
+for action in ("notify", "resume", "cleanup"):
+    state = relative / "%deleted.codex.waiting"
+    if action != "notify":
+        state.touch()
+    result = subprocess.run(
+        [str(root / "bin" / f"tmux-agent-{action}"), "codex"],
+        input="{}", text=True, capture_output=True, cwd=tmp,
+        env=dict(env, PWD="/nonexistent-tmux-agent-cwd", TMUX_AGENT_STATE_DIR="relative-state"),
+    )
+    assert result.returncode == 0, result
+    assert state.exists() == (action == "notify"), action
+    state.unlink(missing_ok=True)
+PY
+
 # Setup must not create harness-owned config directories. In particular, a
 # stray ~/.claude directory would block a config manager from restoring its
 # symlink. Preflight all selected products before changing either one.

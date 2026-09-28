@@ -1,4 +1,11 @@
 #!/bin/sh
+# The session's directory may have been removed (for example, a worktree).
+# Keep valid working directories for relative state overrides, but recover
+# before launching utilities when getcwd fails. No project files are needed.
+if ! pwd -P >/dev/null 2>&1; then
+    cd / || exit 1
+fi
+
 STATE_DIR="${TMUX_AGENT_STATE_DIR:-/tmp/tmux-agent-$(id -u)}"
 AGENT=${1:-}
 
