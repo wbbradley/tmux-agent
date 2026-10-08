@@ -12,7 +12,17 @@ while :; do
     # shellcheck disable=SC2012
     OLDEST=$(ls -tr "$STATE_DIR"/*.waiting 2>/dev/null | head -1)
     if [ -z "$OLDEST" ]; then
-        tmux display-message "No agent sessions waiting"
+        # Bells belong to windows, independently of the agent queue. A prompt
+        # can clear a wait while its bell stays lit, and other programs ring
+        # bells too. Let the same binding acknowledge these remaining alerts.
+        TARGET=$(tmux list-windows -F '#{session_id}:#{window_id} #{window_bell_flag}' 2>/dev/null |
+            awk '$2 == 1 { print $1; exit }')
+        if [ -n "$TARGET" ]; then
+            tmux select-window -t "$TARGET"
+            tmux display-message "Window bell (no agent wait recorded)"
+        else
+            tmux display-message "No agent sessions waiting or window bells"
+        fi
         exit 0
     fi
 

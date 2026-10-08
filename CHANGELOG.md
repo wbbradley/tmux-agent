@@ -14,6 +14,7 @@
 ### Changed
 
 - Renamed the project and scripts from tmux-claude to tmux-agent
+- Jump to remaining bell-highlighted windows when the agent waiting queue is empty
 
 ## [0.1.3] - 2026-05-24
 

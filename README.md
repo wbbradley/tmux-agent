@@ -5,6 +5,7 @@ Codex CLI. When either agent pauses for input or approval, it marks the pane as
 waiting, surfaces the wait in the tmux status bar, and adds it to a single queue
 ordered by when attention was requested. Press `prefix + g` to jump to the
 oldest waiting agent; focusing the pane or submitting a prompt clears the wait.
+When the agent queue is empty, the same binding visits windows with bell alerts.
 
 Setup installs the lifecycle hooks for one or both tools and configures the live
 tmux server without requiring changes to `tmux.conf`. It can also replace the
@@ -15,7 +16,8 @@ older tmux-claude and tmux-codex integrations while preserving pending waits.
 - **Shared status:** shows `[Claude waiting]`, `[Codex waiting]`, or a combined
   count such as `[Agents waiting: Claude 2, Codex 1]`.
 - **One jump binding:** `prefix + g` switches to the oldest waiting Claude or
-  Codex pane, interleaved by the time each agent started waiting.
+  Codex pane, interleaved by the time each agent started waiting. Once the queue
+  is empty, it visits remaining windows with bell alerts.
 - **Bell on wait:** tmux can highlight the window immediately when bell
   monitoring is enabled.
 - **Auto-clear on activity:** submitting a prompt or focusing a pane clears its
@@ -84,6 +86,13 @@ Hooks write state under `/tmp/tmux-agent-<uid>/` using filenames such as
 to have a waiting state associated with the same pane. Their modification times
 form one queue for `prefix + g`.
 
+Window bell highlights are separate from this queue: submitting a prompt clears
+an agent's wait but tmux keeps the window's bell alert until the window is visited.
+Other programs can also ring bells. After exhausting recorded agent waits,
+`prefix + g` visits bell-highlighted windows in the current session's window
+order and displays `Window bell (no agent wait recorded)`. A bell identifies a
+window, so this fallback leaves that window's selected pane unchanged.
+
 | Event | Claude Code | Codex |
 |---|---|---|
 | Turn stops | Mark waiting | Mark waiting |
@@ -135,4 +144,5 @@ Run the self-contained test suite:
 
 ```sh
 ./tests/test.sh
+./tests/test-jump.sh
 ```
